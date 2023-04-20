@@ -14,8 +14,86 @@ class Rope extends CustomPainter {
   final bool isDragging;
   final double thickness;
   final List<RopeSegment> _segments;
+  final bool _coiled;
 
-  Rope({
+  factory Rope({
+    required Offset startPosition,
+    required double segmentLength,
+    required int numSegments,
+    bool isDragging = false,
+    double stiffness = 0.2,
+    int iterations = 20,
+    Offset gravity = const Offset(0, 9.8),
+    int thickness = 5,
+    List<Color> colors = const [
+      Color.fromRGBO(0, 0, 255, 1),
+      Color.fromRGBO(255, 0, 0, 1)
+    ],
+  }) {
+    final segments = List.generate(
+      numSegments,
+      (index) => RopeSegment(
+        Offset(
+          startPosition.dx,
+          startPosition.dy + index * segmentLength,
+        ),
+      ),
+    );
+    return Rope._(
+      segments,
+      startPosition: startPosition,
+      numSegments: numSegments,
+      segmentLength: segmentLength,
+      stiffness: stiffness,
+      iterations: iterations,
+      gravity: gravity,
+      colors: colors,
+      thickness: thickness.toDouble(),
+      isDragging: isDragging,
+      coiled: false,
+    );
+  }
+
+  factory Rope.coiled({
+    required Offset startPosition,
+    required double segmentLength,
+    required int numSegments,
+    bool isDragging = false,
+    double stiffness = 0.2,
+    int iterations = 20,
+    Offset gravity = const Offset(0, 9.8),
+    int thickness = 5,
+    List<Color> colors = const [
+      Color.fromRGBO(0, 0, 255, 1),
+      Color.fromRGBO(255, 0, 0, 1)
+    ],
+  }) {
+    final segments = List.generate(
+      numSegments,
+      (index) => RopeSegment(
+        Offset(
+          startPosition.dx,
+          startPosition.dy + index * segmentLength,
+        ),
+      ),
+    );
+    return Rope._(
+      segments,
+      startPosition: startPosition,
+      numSegments: numSegments,
+      segmentLength: segmentLength,
+      stiffness: stiffness,
+      iterations: iterations,
+      gravity: gravity,
+      colors: colors,
+      thickness: thickness.toDouble(),
+      isDragging: isDragging,
+      coiled: true,
+    );
+  }
+
+  Rope._(
+    this._segments, {
     required this.startPosition,
     required this.segmentLength,
     required this.numSegments,
@@ -24,19 +102,9 @@ class Rope extends CustomPainter {
     this.iterations = 20,
     this.gravity = const Offset(0, 9.8),
     this.thickness = 5,
-    this.colors = const [
-      Color.fromRGBO(0, 0, 255, 1),
-      Color.fromRGBO(255, 0, 0, 1)
-    ],
-  }) : _segments = List.generate(
-          numSegments,
-          (index) => RopeSegment(
-            Offset(
-              startPosition.dx,
-              startPosition.dy + index * segmentLength,
-            ),
-          ),
-        );
+    required bool coiled,
+    required this.colors,
+  }) : _coiled = coiled;
 
   List<RopeSegment> get segments => _segments;
 
@@ -71,6 +139,14 @@ class Rope extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (_coiled) {
+      paintCoiled(canvas, size);
+    } else {
+      paintStraight(canvas, size);
+    }
+  }
+
+  void paintCoiled(Canvas canvas, Size size) {
     final paint1 = Paint()
       ..color = colors[0]
       ..strokeWidth = thickness
@@ -130,6 +206,52 @@ class Rope extends CustomPainter {
 
     canvas.drawPath(path1, paint1);
     canvas.drawPath(path2, paint2);
+  }
+
+  void paintStraight(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = thickness;
+
+    final path = Path();
+    for (int i = 0; i < segments.length - 1; i++) {
+      Offset a = segments[i].position;
+      Offset b = segments[i + 1].position;
+
+      final colorIndex = (i / segments.length * colors.length).floor();
+      paint.color = colors[colorIndex % colors.length];
+
+      path.moveTo(a.dx, a.dy);
+      path.lineTo(b.dx, b.dy);
+      canvas.drawPath(path, paint);
+    }
+
+    final pathMetrics = path.computeMetrics();
+    final totalLength = pathMetrics.fold<double>(
+        0, (double prev, PathMetric pathMetric) => prev + pathMetric.length);
+
+    for (double i = 0; i < totalLength; i += totalLength / 10) {
+      final PathMetric? pathMetric = pathMetrics.isNotEmpty
+          ? pathMetrics.firstWhere((PathMetric pm) => pm.length >= i,
+              orElse: () => pathMetrics.last)
+          : null;
+      if (pathMetric == null) continue;
+
+      final double localTangentOffset =
+          (i - pathMetric.length).clamp(0, pathMetric.length);
+      final Tangent? tangent =
+          pathMetric.getTangentForOffset(localTangentOffset);
+      if (tangent == null) continue;
+
+      final Offset normal =
+          Offset(-tangent.vector.dy, tangent.vector.dx).normalize() * thickness;
+
+      final Offset start = tangent.position + normal;
+      final Offset end = tangent.position - normal;
+
+      paint.color = colors[i.floor() % colors.length];
+      canvas.drawLine(start, end, paint);
+    }
   }
 
   @override

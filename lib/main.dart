@@ -77,7 +77,7 @@ class _RopeSimulationState extends State<RopeSimulation> {
   void initState() {
     super.initState();
 
-    rope = Rope(
+    rope = Rope.coiled(
       startPosition: const Offset(100, 100),
       numSegments: 20,
       segmentLength: 20,
