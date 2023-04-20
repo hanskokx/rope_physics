@@ -76,6 +76,7 @@ class _RopeSimulationState extends State<RopeSimulation> {
   @override
   void initState() {
     super.initState();
+
     rope = Rope(
       startPosition: const Offset(100, 100),
       numSegments: 20,

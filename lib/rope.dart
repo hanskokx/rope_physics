@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/rendering.dart';
@@ -70,49 +71,65 @@ class Rope extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final paint1 = Paint()
+      ..color = colors[0]
+      ..strokeWidth = thickness
       ..style = PaintingStyle.stroke
-      ..strokeWidth = thickness;
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
 
-    final path = Path();
+    final paint2 = Paint()
+      ..color = colors[1]
+      ..strokeWidth = thickness
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round
+      ..strokeCap = StrokeCap.round;
+
+    final double wrapInterval = segmentLength / 2;
+
+    Path path1 = Path();
+    Path path2 = Path();
+
     for (int i = 0; i < segments.length - 1; i++) {
-      Offset a = segments[i].position;
-      Offset b = segments[i + 1].position;
+      final segmentA = segments[i];
+      final segmentB = segments[i + 1];
+      final angle = atan2(
+        segmentB.position.dy - segmentA.position.dy,
+        segmentB.position.dx - segmentA.position.dx,
+      );
 
-      final colorIndex = (i / segments.length * colors.length).floor();
-      paint.color = colors[colorIndex % colors.length];
+      final double dx = segmentB.position.dx - segmentA.position.dx;
+      final double dy = segmentB.position.dy - segmentA.position.dy;
 
-      path.moveTo(a.dx, a.dy);
-      path.lineTo(b.dx, b.dy);
-      canvas.drawPath(path, paint);
+      final double offsetX1 = cos(angle + pi / 2) * 2;
+      final double offsetY1 = sin(angle + pi / 2) * 2;
+      final double offsetX2 = cos(angle - pi / 2) * 2;
+      final double offsetY2 = sin(angle - pi / 2) * 2;
+
+      for (double t = 0; t <= 1; t += 0.01) {
+        final double x = segmentA.position.dx + dx * t;
+        final double y = segmentA.position.dy + dy * t;
+
+        final double offsetX = cos(t * pi * 2 * wrapInterval) * 3;
+        final double offsetY = sin(t * pi * 2 * wrapInterval) * 3;
+
+        final double x1 = x + offsetX * offsetX1;
+        final double y1 = y + offsetY * offsetY1;
+        final double x2 = x + offsetX * offsetX2;
+        final double y2 = y + offsetY * offsetY2;
+
+        if (t == 0 && i == 0) {
+          path1.moveTo(x1, y1);
+          path2.moveTo(x2, y2);
+        } else {
+          path1.lineTo(x1, y1);
+          path2.lineTo(x2, y2);
+        }
+      }
     }
 
-    final pathMetrics = path.computeMetrics();
-    final totalLength = pathMetrics.fold<double>(
-        0, (double prev, PathMetric pathMetric) => prev + pathMetric.length);
-
-    for (double i = 0; i < totalLength; i += totalLength / 10) {
-      final PathMetric? pathMetric = pathMetrics.isNotEmpty
-          ? pathMetrics.firstWhere((PathMetric pm) => pm.length >= i,
-              orElse: () => pathMetrics.last)
-          : null;
-      if (pathMetric == null) continue;
-
-      final double localTangentOffset =
-          (i - pathMetric.length).clamp(0, pathMetric.length);
-      final Tangent? tangent =
-          pathMetric.getTangentForOffset(localTangentOffset);
-      if (tangent == null) continue;
-
-      final Offset normal =
-          Offset(-tangent.vector.dy, tangent.vector.dx).normalize() * thickness;
-
-      final Offset start = tangent.position + normal;
-      final Offset end = tangent.position - normal;
-
-      paint.color = colors[i.floor() % colors.length];
-      canvas.drawLine(start, end, paint);
-    }
+    canvas.drawPath(path1, paint1);
+    canvas.drawPath(path2, paint2);
   }
 
   @override
@@ -153,6 +170,26 @@ class Rope extends CustomPainter {
       // Pin the first segment of the rope
       segments.first.position = startPosition;
     }
+  }
+
+  Path wrapPath(Path originalPath, double wrapInterval) {
+    final Path wrappedPath = Path();
+    final PathMetric pathMetric = originalPath.computeMetrics().first;
+    final double totalLength = pathMetric.length;
+
+    for (double t = 0; t < totalLength; t += totalLength / wrapInterval) {
+      final tangent1 = pathMetric.getTangentForOffset(t);
+      final tangent2 =
+          pathMetric.getTangentForOffset(t + totalLength / (2 * wrapInterval));
+      final tangent3 =
+          pathMetric.getTangentForOffset(t + totalLength / wrapInterval);
+
+      wrappedPath.moveTo(tangent1!.position.dx, tangent1.position.dy);
+      wrappedPath.quadraticBezierTo(tangent2!.position.dx, tangent2.position.dy,
+          tangent3!.position.dx, tangent3.position.dy);
+    }
+
+    return wrappedPath;
   }
 }
 
